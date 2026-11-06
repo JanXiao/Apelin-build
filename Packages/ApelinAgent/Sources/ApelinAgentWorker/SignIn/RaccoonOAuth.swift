@@ -58,10 +58,12 @@ enum RaccoonOAuth {
 
     /// Runs the whole flow, ending with the credential to store.
     ///
-    /// The redirect is read through `callbacks.loopback`'s paste path, which
-    /// `AccountDesk` wraps for every browser flow: this binds a listener it
-    /// never receives a call on, so a flow that is only ever reached by a pasted
-    /// address still has one object to wait on.
+    /// The page is asked to deliver the code to a loopback (`desktop_callback`
+    /// below), so this binds one and waits on it. `AccountDesk` wraps that
+    /// listener in `PasteableLoopback` for every browser flow, which races the
+    /// same wait against an address the user pastes: Safari left on a page it
+    /// cannot reach still shows the redirect in its address bar, and either
+    /// answer finishes the sign-in.
     static func login(
         callbacks: OAuthLogin.Callbacks,
         client: HTTPClient = URLSessionHTTPClient(),
@@ -71,9 +73,17 @@ enum RaccoonOAuth {
         // kwwk's listener reports the port it was built with rather than the
         // one the kernel hands it — so the port is chosen here, above 1023 as
         // the page requires, and the listener is given that one.
-        let port = try freePort()
-        let listener = try callbacks.loopback("127.0.0.1", port, callbackPath)
-        try await listener.listen()
+        //
+        // Probing a free port and then binding it again leaves a window in
+        // which the kernel may hand it to another process, so a bind that
+        // fails is retried on a fresh port rather than reported: the window
+        // is short, and a second attempt costs nothing.
+        var listener: any OAuthLoopbackListener
+        do {
+            listener = try await boundListener(callbacks: callbacks)
+        } catch {
+            listener = try await boundListener(callbacks: callbacks)
+        }
         defer { listener.stop() }
 
         let page = try authorizeURL(state: state, redirect: listener.redirectURI)
@@ -101,6 +111,15 @@ enum RaccoonOAuth {
             credentials.extras[officeOrgRoleExtra] = .string(exchanged.officeOrgRole)
         }
         return credentials
+    }
+
+    /// A listener bound on a port chosen here, so `redirectURI` names one the
+    /// page accepts.
+    static func boundListener(callbacks: OAuthLogin.Callbacks) async throws -> any OAuthLoopbackListener {
+        let port = try freePort()
+        let listener = try callbacks.loopback("127.0.0.1", port, callbackPath)
+        try await listener.listen()
+        return listener
     }
 
     /// `https://xiaohuanxiong.com/code/authorize?login_source=desktop&appname=…&state=…`
