@@ -78,12 +78,7 @@ enum RaccoonOAuth {
         // which the kernel may hand it to another process, so a bind that
         // fails is retried on a fresh port rather than reported: the window
         // is short, and a second attempt costs nothing.
-        var listener: any OAuthLoopbackListener
-        do {
-            listener = try await boundListener(callbacks: callbacks)
-        } catch {
-            listener = try await boundListener(callbacks: callbacks)
-        }
+        let listener = try await boundListener(callbacks: callbacks, attempts: 2)
         defer { listener.stop() }
 
         let page = try authorizeURL(state: state, redirect: listener.redirectURI)
@@ -115,11 +110,26 @@ enum RaccoonOAuth {
 
     /// A listener bound on a port chosen here, so `redirectURI` names one the
     /// page accepts.
-    static func boundListener(callbacks: OAuthLogin.Callbacks) async throws -> any OAuthLoopbackListener {
-        let port = try freePort()
-        let listener = try callbacks.loopback("127.0.0.1", port, callbackPath)
-        try await listener.listen()
-        return listener
+    ///
+    /// A bind can lose the race to another process that took the probed port
+    /// in between, so it is tried again on a fresh one before the failure
+    /// reaches the user.
+    static func boundListener(
+        callbacks: OAuthLogin.Callbacks,
+        attempts: Int,
+    ) async throws -> any OAuthLoopbackListener {
+        var lastError: Error?
+        for _ in 0 ..< max(1, attempts) {
+            do {
+                let port = try freePort()
+                let listener = try callbacks.loopback("127.0.0.1", port, callbackPath)
+                try await listener.listen()
+                return listener
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? RaccoonOAuthError("The Raccoon sign-in could not open its local address.")
     }
 
     /// `https://xiaohuanxiong.com/code/authorize?login_source=desktop&appname=…&state=…`
