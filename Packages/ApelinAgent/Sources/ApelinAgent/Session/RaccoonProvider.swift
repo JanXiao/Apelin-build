@@ -573,8 +573,9 @@ extension RaccoonWire {
     ///   and ignores it, and eight paired runs at temperature 0 measured no
     ///   difference between `minimal` and `max`;
     /// - the thinking level goes **inside `extra_body`**, as
-    ///   `thinking.type` of `enabled` or `disabled`. Sent at the top level it
-    ///   is ignored silently — not even an invalid value is refused.
+    ///   `thinking.type` of `enabled`. Sent at the top level it is ignored
+    ///   silently — not even an invalid value is refused. A level kwwk did not
+    ///   send (`off`) sends no field at all; `thinkingExtraBody` says why.
     static func mend(_ root: inout [String: Any], model: Model, options: StreamOptions?) {
         if let maxTokens = root["max_tokens"] as? Int {
             root["max_tokens"] = clampOutputTokens(maxTokens)
