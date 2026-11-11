@@ -14,3 +14,6 @@ Packages/*/.build/
 Extensions/**/.build/
 # The banner tool's pnpm dependencies
 Documents/Banner/Tool/node_modules/
+
+# Local scratch material (art.zip, exported previews) kept out of history
+/f040b/
